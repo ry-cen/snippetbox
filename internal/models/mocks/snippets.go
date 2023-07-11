@@ -15,7 +15,7 @@ var mockSnippet = &models.Snippet{
 
 type SnippetModel struct{}
 
-func (m *SnippetModel) Insert(title string, conten string, expires int) (int, error) {
+func (m *SnippetModel) Insert(title string, conten string, expires int, user_id int) (int, error) {
 	return 2, nil
 }
 

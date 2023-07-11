@@ -7,28 +7,30 @@ import (
 )
 
 type SnippetModelInterface interface {
-	Insert(title string, content string, expires int) (int, error)
+	Insert(title string, content string, expires int, userID int) (int, error)
 	Get(id int) (*Snippet, error)
 	Latest() ([]*Snippet, error)
+	GetUserSnippets(userID int) ([]*Snippet, error)
 }
 
 type Snippet struct {
-	ID      int
-	Title   string
-	Content string
-	Created time.Time
-	Expires time.Time
+	ID       int
+	Title    string
+	Content  string
+	Created  time.Time
+	Expires  time.Time
+	Username string
 }
 
 type SnippetModel struct {
 	DB *sql.DB
 }
 
-func (m *SnippetModel) Insert(title string, content string, expires int) (int, error) {
-	stmt := `INSERT INTO snippets (title, content, created, expires)
-	VALUES(?, ?, UTC_TIMESTAMP(), DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? DAY))`
+func (m *SnippetModel) Insert(title string, content string, expires int, userID int) (int, error) {
+	stmt := `INSERT INTO snippets (title, content, created, expires, user_id)
+	VALUES(?, ?, UTC_TIMESTAMP(), DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? DAY), ?)`
 
-	result, err := m.DB.Exec(stmt, title, content, expires)
+	result, err := m.DB.Exec(stmt, title, content, expires, userID)
 	if err != nil {
 		return 0, err
 	}
@@ -42,14 +44,15 @@ func (m *SnippetModel) Insert(title string, content string, expires int) (int, e
 }
 
 func (m *SnippetModel) Get(id int) (*Snippet, error) {
-	stmt := `SELECT id, title, content, created, expires FROM snippets
-	WHERE expires > UTC_TIMESTAMP() AND id = ?`
+	stmt := `SELECT s.id, s.title, s.content, s.created, s.expires, u.name 
+	FROM snippets s JOIN users u ON s.user_id = u.id
+	WHERE s.expires > UTC_TIMESTAMP() AND s.id = ?`
 
 	row := m.DB.QueryRow(stmt, id)
 
 	s := &Snippet{}
 
-	err := row.Scan(&s.ID, &s.Title, &s.Content, &s.Created, &s.Expires)
+	err := row.Scan(&s.ID, &s.Title, &s.Content, &s.Created, &s.Expires, &s.Username)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNoRecord
@@ -62,8 +65,9 @@ func (m *SnippetModel) Get(id int) (*Snippet, error) {
 }
 
 func (m *SnippetModel) Latest() ([]*Snippet, error) {
-	stmt := `SELECT id, title, content, created, expires FROM snippets
-	WHERE expires > UTC_TIMESTAMP() ORDER BY id DESC LIMIT 10`
+	stmt := `SELECT s.id, s.title, s.content, s.created, s.expires, u.name 
+	FROM snippets s JOIN users u ON s.user_id = u.id
+	WHERE s.expires > UTC_TIMESTAMP() ORDER BY s.id DESC LIMIT 10`
 
 	rows, err := m.DB.Query(stmt)
 	if err != nil {
@@ -77,7 +81,7 @@ func (m *SnippetModel) Latest() ([]*Snippet, error) {
 	for rows.Next() {
 		s := &Snippet{}
 
-		err = rows.Scan(&s.ID, &s.Title, &s.Content, &s.Created, &s.Expires)
+		err = rows.Scan(&s.ID, &s.Title, &s.Content, &s.Created, &s.Expires, &s.Username)
 		if err != nil {
 			return nil, err
 		}
@@ -91,4 +95,36 @@ func (m *SnippetModel) Latest() ([]*Snippet, error) {
 
 	return snippets, nil
 
+}
+
+func (m *SnippetModel) GetUserSnippets(userID int) ([]*Snippet, error) {
+	stmt := `SELECT s.id, s.title, s.content, s.created, s.expires, u.name 
+	FROM snippets s JOIN users u ON s.user_id = u.id
+	WHERE s.expires > UTC_TIMESTAMP() AND s.user_id = ? ORDER BY s.id DESC`
+
+	rows, err := m.DB.Query(stmt, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	snippets := []*Snippet{}
+
+	for rows.Next() {
+		s := &Snippet{}
+
+		err = rows.Scan(&s.ID, &s.Title, &s.Content, &s.Created, &s.Expires, &s.Username)
+		if err != nil {
+			return nil, err
+		}
+
+		snippets = append(snippets, s)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return snippets, nil
 }

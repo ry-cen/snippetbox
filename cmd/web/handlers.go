@@ -102,7 +102,9 @@ func (app *application) snippetCreatePost(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	id, err := app.snippets.Insert(form.Title, form.Content, form.Expires)
+	userID := app.sessionManager.GetInt(r.Context(), "authenticatedUserID")
+
+	id, err := app.snippets.Insert(form.Title, form.Content, form.Expires, userID)
 	if err != nil {
 		app.serverError(w, err)
 		return
@@ -311,6 +313,20 @@ func (app *application) accountPasswordUpdatePost(w http.ResponseWriter, r *http
 
 	http.Redirect(w, r, "/account/view", http.StatusSeeOther)
 
+}
+
+func (app *application) userSnippets(w http.ResponseWriter, r *http.Request) {
+	userID := app.sessionManager.GetInt(r.Context(), "authenticatedUserID")
+
+	snippets, err := app.snippets.GetUserSnippets(userID)
+	if err != nil {
+		app.serverError(w, err)
+		return
+	}
+
+	data := app.newTemplateData(r)
+	data.Snippets = snippets
+	app.render(w, http.StatusOK, "usersnippets.tmpl.html", data)
 }
 
 func ping(w http.ResponseWriter, r *http.Request) {
